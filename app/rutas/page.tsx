@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'react'
 
 const TURNOS = ['AM1', 'AM2', 'PM1', 'PM2', 'PM3', 'PM4'] as const
-const CAMIONES = ['FOTON', 'DFSK'] as const
+const CAMIONES = ['FOTON', 'DFSK', 'JMC'] as const
 const COLORES = ['naranja', 'azul', 'verde', 'amarilla', 'roja', 'morada'] as const
 
 const COMUNAS = [

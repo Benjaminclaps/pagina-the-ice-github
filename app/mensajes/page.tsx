@@ -1,7 +1,7 @@
 'use client'
 import { useMemo, useState } from 'react'
 
-const CAMIONES = ['FOTON', 'DFSK'] as const
+const CAMIONES = ['FOTON', 'DFSK', 'JMC'] as const
 const TURNOS = ['AM1', 'AM2', 'AM3', 'PM1', 'PM2', 'PM3', 'PM4'] as const
 const DRIVERS = ['Cris', 'Hernán', 'Gus', 'Seba', 'Felipe'] as const
 const CUSTOM_PRODUCTS = [
