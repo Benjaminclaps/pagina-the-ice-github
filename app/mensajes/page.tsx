@@ -288,7 +288,7 @@ export default function PlanificadorMensajes() {
           {/* Preview */}
           <div className="md:sticky md:top-24 md:self-start">
             <div className="bg-white/[0.05] backdrop-blur-xl rounded-2xl border border-white/10 p-5 md:p-6">
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between gap-3 mb-4">
                 <p className="text-purple-400 text-xs uppercase tracking-widest font-semibold">Previsualización</p>
                 <button
                   type="button"

@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 
 const LINKS = [
   { href: '/', label: 'The Ice Counter', sub: 'Contador de facturas' },
+  { href: '/make', label: 'Disparar Make', sub: 'Trigger manual de automatización' },
   { href: '/mensajes', label: 'Planificador de mensajes', sub: 'WhatsApp de cargas' },
   { href: '/rutas', label: 'Detalles de rutas', sub: 'WhatsApp de actualización' },
 ] as const
@@ -12,8 +13,6 @@ const LINKS = [
 export default function NavMenu() {
   const [open, setOpen] = useState(false)
   const pathname = usePathname()
-
-  useEffect(() => { setOpen(false) }, [pathname])
 
   useEffect(() => {
     if (!open) return
@@ -63,6 +62,7 @@ export default function NavMenu() {
                   <Link
                     key={link.href}
                     href={link.href}
+                    onClick={() => setOpen(false)}
                     className={`block rounded-xl px-4 py-3 border transition-all ${
                       active
                         ? 'bg-purple-600/20 border-purple-500/40 text-white'

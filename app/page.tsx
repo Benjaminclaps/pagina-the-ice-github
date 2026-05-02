@@ -37,7 +37,13 @@ type Invoice = { id: number; timestamp: number; items: InvoiceItem[] }
 type CustomLine = { product: string; qty: number }
 
 function playSound() {
-  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+  const AudioContextCtor =
+    window.AudioContext ||
+    (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+
+  if (!AudioContextCtor) return
+
+  const audioContext = new AudioContextCtor()
   const osc = audioContext.createOscillator()
   const gain = audioContext.createGain()
   osc.connect(gain)
@@ -127,7 +133,7 @@ export default function TheIceCounter() {
     const newCustomLines: CustomLine[] = []
 
     invoice.items.forEach(item => {
-      if (MAIN_PRODUCTS.includes(item.product as any)) {
+      if (MAIN_PRODUCTS.includes(item.product as (typeof MAIN_PRODUCTS)[number])) {
         newMainCounts[item.product] = item.qty
       } else {
         newCustomLines.push({ product: item.product, qty: item.qty })

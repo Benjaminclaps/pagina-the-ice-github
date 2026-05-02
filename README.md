@@ -29,6 +29,24 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
+## Make trigger
+
+The manual Make trigger lives in its own page at `/make`.
+
+Configure the Make API credentials:
+
+```bash
+MAKE_API_TOKEN_PRIMARY=
+MAKE_SCENARIO_ID_PRIMARY=4938747
+MAKE_API_BASE_URL_PRIMARY=https://us2.make.com/api/v2
+
+MAKE_API_TOKEN_SECONDARY=
+MAKE_SCENARIO_ID_SECONDARY=
+MAKE_API_BASE_URL_SECONDARY=https://us2.make.com/api/v2
+```
+
+The page posts only `{ account }` to `/api/make/trigger`, and that route calls the Make API to run the selected scenario on demand.
+
 ## Deploy on Vercel
 
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.

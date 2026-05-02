@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 
 const TURNOS = ['AM1', 'AM2', 'PM1', 'PM2', 'PM3', 'PM4'] as const
 const CAMIONES = ['FOTON', 'DFSK'] as const
@@ -169,8 +169,8 @@ function RutaBlock({
 }
 
 export default function PlanificadorRutas() {
-  const [fecha, setFecha] = useState('')
-  const [hora, setHora] = useState('')
+  const [fecha, setFecha] = useState(() => getChileNow().fecha)
+  const [hora, setHora] = useState(() => getChileNow().hora)
 
   const [ruta1, setRuta1] = useState<Ruta>({ turno: 'AM1', camion: 'FOTON', color: 'naranja', link: '', noSale: false })
   const [ruta2, setRuta2] = useState<Ruta>({ turno: 'AM2', camion: 'DFSK', color: 'azul', link: '', noSale: false })
@@ -183,12 +183,6 @@ export default function PlanificadorRutas() {
   )
 
   const [copied, setCopied] = useState(false)
-
-  useEffect(() => {
-    const { fecha, hora } = getChileNow()
-    setFecha(fecha)
-    setHora(hora)
-  }, [])
 
   const refreshNow = () => {
     const { fecha, hora } = getChileNow()
@@ -339,7 +333,7 @@ export default function PlanificadorRutas() {
           {/* Preview */}
           <div className="md:sticky md:top-24 md:self-start">
             <div className="bg-white/[0.05] backdrop-blur-xl rounded-2xl border border-white/10 p-5 md:p-6">
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between gap-3 mb-4">
                 <p className="text-purple-400 text-xs uppercase tracking-widest font-semibold">Previsualización</p>
                 <button
                   type="button"
