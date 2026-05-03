@@ -19,7 +19,7 @@ type Turno = (typeof TURNOS)[number]
 type CargaKey = 'ORIGINAL' | 'MINIS' | 'ZIPPER ORIGINAL' | 'ZIPPER MINI' | 'ESCAMA' | 'TUBO SÓLIDO'
 const CARGA_KEYS: CargaKey[] = ['ORIGINAL', 'MINIS', 'ZIPPER ORIGINAL', 'ZIPPER MINI', 'ESCAMA', 'TUBO SÓLIDO']
 
-type CustomLine = { product: string; qty: number }
+type CustomLine = { product: string; qty: number; mode: 'preset' | 'custom' }
 
 const emptyCarga = (): Record<CargaKey, number> =>
   Object.fromEntries(CARGA_KEYS.map(k => [k, 0])) as Record<CargaKey, number>
@@ -91,7 +91,7 @@ export default function PlanificadorMensajes() {
   const updateCarga = (k: CargaKey, v: number) =>
     setCarga(prev => ({ ...prev, [k]: Math.max(0, v) }))
 
-  const addCustom = () => setCustoms(prev => [...prev, { product: '', qty: 1 }])
+  const addCustom = () => setCustoms(prev => [...prev, { product: '', qty: 1, mode: 'preset' }])
   const updateCustom = (i: number, field: keyof CustomLine, value: string | number) =>
     setCustoms(prev => prev.map((l, idx) => (idx === i ? { ...l, [field]: value } : l)))
   const removeCustom = (i: number) => setCustoms(prev => prev.filter((_, idx) => idx !== i))
@@ -221,18 +221,45 @@ export default function PlanificadorMensajes() {
 
               {customs.length > 0 && (
                 <div className="space-y-2 mb-3">
-                  {customs.map((line, i) => (
-                    <div key={i} className="flex gap-2 items-center bg-white/[0.03] rounded-lg p-2 border border-white/5">
+                {customs.map((line, i) => (
+                  <div key={i} className="flex gap-2 items-center bg-white/[0.03] rounded-lg p-2 border border-white/5">
                       <select
-                        value={line.product}
-                        onChange={e => updateCustom(i, 'product', e.target.value)}
-                        className="flex-1 bg-white/10 text-white text-xs rounded-md px-2 py-1.5 border border-white/10 focus:outline-none focus:border-purple-500"
+                        value={line.mode}
+                        onChange={e => {
+                          const mode = e.target.value as CustomLine['mode']
+                          updateCustom(i, 'mode', mode)
+                          if (mode === 'preset' && !CUSTOM_PRODUCTS.includes(line.product as (typeof CUSTOM_PRODUCTS)[number])) {
+                            updateCustom(i, 'product', '')
+                          }
+                          if (mode === 'custom' && line.product && CUSTOM_PRODUCTS.includes(line.product as (typeof CUSTOM_PRODUCTS)[number])) {
+                            updateCustom(i, 'product', '')
+                          }
+                        }}
+                        className="w-28 bg-white/10 text-white text-xs rounded-md px-2 py-1.5 border border-white/10 focus:outline-none focus:border-purple-500"
                       >
-                        <option value="" className="bg-slate-900">Seleccionar...</option>
-                        {CUSTOM_PRODUCTS.map(p => (
-                          <option key={p} value={p} className="bg-slate-900">{p}</option>
-                        ))}
+                        <option value="preset" className="bg-slate-900">Predefinido</option>
+                        <option value="custom" className="bg-slate-900">Redactar</option>
                       </select>
+                      {line.mode === 'preset' ? (
+                        <select
+                          value={line.product}
+                          onChange={e => updateCustom(i, 'product', e.target.value)}
+                          className="flex-1 bg-white/10 text-white text-xs rounded-md px-2 py-1.5 border border-white/10 focus:outline-none focus:border-purple-500"
+                        >
+                          <option value="" className="bg-slate-900">Seleccionar...</option>
+                          {CUSTOM_PRODUCTS.map(p => (
+                            <option key={p} value={p} className="bg-slate-900">{p}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          value={line.product}
+                          onChange={e => updateCustom(i, 'product', e.target.value)}
+                          className="flex-1 bg-white/10 text-white text-xs rounded-md px-2 py-1.5 border border-white/10 focus:outline-none focus:border-purple-500"
+                          placeholder="Escribe el producto"
+                        />
+                      )}
                       <input
                         type="number" min={1} inputMode="numeric"
                         value={line.qty || ''}

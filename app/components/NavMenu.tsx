@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 
 const LINKS = [
   { href: '/', label: 'The Ice Counter', sub: 'Contador de facturas' },
+  { href: '/agenda', label: 'Agenda de pedidos', sub: 'Formulario para Sheets' },
   { href: '/make', label: 'Disparar Make', sub: 'Trigger manual de automatización' },
   { href: '/mensajes', label: 'Planificador de mensajes', sub: 'WhatsApp de cargas' },
   { href: '/rutas', label: 'Detalles de rutas', sub: 'WhatsApp de actualización' },

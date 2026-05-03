@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "The Ice · Operaciones",
-  description: "Herramientas internas de despacho",
+  description: "Herramientas internas de despacho y agenda",
 };
 
 export default function RootLayout({
