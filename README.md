@@ -47,6 +47,8 @@ MAKE_API_BASE_URL_SECONDARY=https://us2.make.com/api/v2
 
 The page posts only `{ account }` to `/api/make/trigger`, and that route calls the Make API to run the selected scenario on demand.
 
+On Vercel, configure these variables in the project settings for both Preview and Production. The local `.env.local` file is not deployed.
+
 ## Deploy on Vercel
 
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
