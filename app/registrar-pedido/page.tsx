@@ -67,6 +67,7 @@ export default function RegistrarPedidoPage() {
           mensaje: draft.mensaje.trim(),
           notas: draft.notas.trim(),
           entregar_el_dia: selectedDate,
+          cargado_en_hub: false,
         }),
       })
 
