@@ -12,12 +12,13 @@
     "web:dev": "next dev"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.105.3",
+    "dotenv": "^17.2.3",
+    "googleapis": "^158.0.0",
     "gsap": "^3.15.0",
     "next": "16.2.4",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "dotenv": "^17.2.3",
-    "googleapis": "^158.0.0",
     "zod": "^4.1.11"
   },
   "devDependencies": {
@@ -27,8 +28,8 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
-    "tsx": "^4.20.6",
     "tailwindcss": "^4",
+    "tsx": "^4.20.6",
     "typescript": "^5"
   }
 }
