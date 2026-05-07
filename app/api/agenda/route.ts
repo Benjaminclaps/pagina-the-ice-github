@@ -84,8 +84,5 @@ export async function PATCH(request: Request) {
     return Response.json({ ok: false, error: 'Body inválido' }, { status: 400 })
   }
 
-  return proxyToAppsScript('POST', {
-    ...body,
-    action: 'update_hub_status',
-  })
+  return proxyToAppsScript('PATCH', body)
 }

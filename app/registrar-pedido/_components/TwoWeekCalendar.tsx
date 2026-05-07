@@ -26,6 +26,18 @@ type Draft = {
   entregar_el_dia: string
 }
 
+type OrderModalState =
+  | {
+      mode: 'create'
+      date: string
+      item: null
+    }
+  | {
+      mode: 'edit'
+      date: string
+      item: AgendaItem
+    }
+
 const inputBase =
   'w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-[15px] text-white outline-none transition placeholder:text-white/25 focus:border-cyan-400 focus:bg-white/[0.09]'
 
@@ -84,9 +96,19 @@ function blankDraft(date: string): Draft {
   }
 }
 
-function OrderCard({ item }: { item: AgendaItem }) {
+function OrderCard({
+  item,
+  onClick,
+}: {
+  item: AgendaItem
+  onClick: () => void
+}) {
   return (
-    <article className="rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-3 shadow-[0_12px_30px_rgba(0,0,0,0.16)]">
+    <button
+      type="button"
+      onClick={onClick}
+      className="block w-full rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-3 text-left shadow-[0_12px_30px_rgba(0,0,0,0.16)] transition hover:-translate-y-0.5 hover:border-cyan-300/25 hover:bg-white/[0.07]"
+    >
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="text-sm font-semibold leading-5 text-white">{item.cliente?.trim() || 'Sin cliente'}</p>
@@ -106,31 +128,46 @@ function OrderCard({ item }: { item: AgendaItem }) {
       {item.notas?.trim() ? (
         <p className="mt-2 text-[11px] leading-5 text-white/38">Notas: {formatShortText(item.notas, 70)}</p>
       ) : null}
-    </article>
+      <div className="mt-3 flex items-center justify-between">
+        <span className="text-[11px] uppercase tracking-[0.18em] text-cyan-200/55">Editar</span>
+        <span className="text-[11px] text-white/35">Click para abrir</span>
+      </div>
+    </button>
   )
 }
 
 function OrderComposerModal({
   open,
-  date,
+  state,
   onClose,
-  onCreated,
+  onSaved,
 }: {
   open: boolean
-  date: string
+  state: OrderModalState | null
   onClose: () => void
-  onCreated: () => void
+  onSaved: () => void
 }) {
-  const [draft, setDraft] = useState<Draft>(() => blankDraft(date))
+  const [draft, setDraft] = useState<Draft>(() => blankDraft(state?.date ?? todayValue()))
   const [status, setStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open) return
-    setDraft(blankDraft(date))
+    setDraft(
+      state?.item
+        ? {
+            cliente: state.item.cliente ?? '',
+            encargado:
+              ENCARGADOS.includes(state.item.encargado as Encargado) ? (state.item.encargado as Encargado) : '',
+            mensaje: state.item.mensaje ?? '',
+            notas: state.item.notas ?? '',
+            entregar_el_dia: state.item.entregar_el_dia ?? state.date,
+          }
+        : blankDraft(state?.date ?? todayValue()),
+    )
     setStatus('idle')
     setError(null)
-  }, [date, open])
+  }, [open, state])
 
   const update = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft(prev => ({ ...prev, [key]: value }))
@@ -140,27 +177,42 @@ function OrderComposerModal({
     setError(null)
 
     try {
+      const requestBody = {
+        cliente: draft.cliente.trim() || 'Sin cliente',
+        encargado: draft.encargado || 'Sin asignar',
+        mensaje: draft.mensaje.trim(),
+        notas: draft.notas.trim(),
+        entregar_el_dia: draft.entregar_el_dia,
+        cargado_en_hub: state?.item?.hub_ok ?? false,
+        rowNumber: state?.item?.rowNumber ?? state?.item?.id ?? null,
+        id: state?.item?.id ?? null,
+        agenda_key: state?.item ? `${state.item.cliente}|${state.item.entregar_el_dia ?? ''}|${state.item.rowNumber ?? state.item.id ?? ''}` : null,
+      }
+
       const response = await fetch('/api/agenda', {
-        method: 'POST',
+        method: state?.mode === 'edit' ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cliente: draft.cliente.trim() || 'Sin cliente',
-          encargado: draft.encargado || 'Sin asignar',
-          mensaje: draft.mensaje.trim(),
-          notas: draft.notas.trim(),
-          entregar_el_dia: draft.entregar_el_dia,
-          cargado_en_hub: false,
-        }),
+        body: JSON.stringify(
+          state?.mode === 'edit'
+            ? requestBody
+            : {
+                ...requestBody,
+                cargado_en_hub: false,
+                rowNumber: null,
+                id: null,
+                agenda_key: null,
+              },
+        ),
       })
 
-      const payload = await response.json().catch(() => null)
+      const responsePayload = await response.json().catch(() => null)
 
       if (!response.ok) {
-        throw new Error(payload?.error ?? 'No se pudo guardar el pedido')
+        throw new Error(responsePayload?.error ?? 'No se pudo guardar el pedido')
       }
 
       setStatus('success')
-      onCreated()
+      onSaved()
       onClose()
     } catch (saveError) {
       setStatus('error')
@@ -181,7 +233,9 @@ function OrderComposerModal({
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.3em] text-cyan-200/70">Nuevo pedido</p>
+            <p className="text-[11px] uppercase tracking-[0.3em] text-cyan-200/70">
+              {state?.mode === 'edit' ? 'Editar pedido' : 'Nuevo pedido'}
+            </p>
             <h3 className="mt-2 text-2xl font-semibold tracking-tight text-white">
               {prettyDate(draft.entregar_el_dia)}
             </h3>
@@ -279,7 +333,11 @@ function OrderComposerModal({
             onClick={handleSubmit}
             className="rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 px-4 py-3 text-sm font-bold uppercase tracking-[0.18em] text-white shadow-lg shadow-cyan-950/30 transition hover:from-cyan-400 hover:to-blue-500"
           >
-            {status === 'saving' ? 'Guardando...' : 'Agregar pedido'}
+            {status === 'saving'
+              ? 'Guardando...'
+              : state?.mode === 'edit'
+                ? 'Guardar cambios'
+                : 'Agregar pedido'}
           </button>
         </div>
 
@@ -294,7 +352,7 @@ export default function TwoWeekCalendar({ refreshToken }: { refreshToken: number
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const [modalDate, setModalDate] = useState<string | null>(null)
+  const [modalState, setModalState] = useState<OrderModalState | null>(null)
 
   const days = useMemo(() => {
     const base = todayValue()
@@ -374,8 +432,14 @@ export default function TwoWeekCalendar({ refreshToken }: { refreshToken: number
 
   const weeks = [days.slice(0, 7), days.slice(7, 14)]
 
-  const openComposer = (date: string) => setModalDate(date)
-  const closeComposer = () => setModalDate(null)
+  const openComposer = (date: string) => setModalState({ mode: 'create', date, item: null })
+  const openEditor = (item: AgendaItem) =>
+    setModalState({
+      mode: 'edit',
+      date: item.entregar_el_dia?.trim() || todayValue(),
+      item,
+    })
+  const closeComposer = () => setModalState(null)
   const refreshItems = async () => {
     const response = await fetch('/api/agenda', { cache: 'no-store' })
     const payload = await response.json().catch(() => null)
@@ -483,11 +547,12 @@ export default function TwoWeekCalendar({ refreshToken }: { refreshToken: number
                       </div>
 
                       <div className="mt-4 space-y-2">
-                        {dayItems.length > 0 ? (
+                {dayItems.length > 0 ? (
                           dayItems.slice(0, 4).map((item, index) => (
                             <OrderCard
                               key={`${date}-${index}-${item.id ?? item.rowNumber ?? item.cliente}`}
                               item={item}
+                              onClick={() => openEditor(item)}
                             />
                           ))
                         ) : (
@@ -510,10 +575,10 @@ export default function TwoWeekCalendar({ refreshToken }: { refreshToken: number
       )}
 
       <OrderComposerModal
-        open={modalDate !== null}
-        date={modalDate ?? todayValue()}
+        open={modalState !== null}
+        state={modalState}
         onClose={closeComposer}
-        onCreated={refreshItems}
+        onSaved={refreshItems}
       />
     </section>
   )
