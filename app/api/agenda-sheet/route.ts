@@ -1,4 +1,4 @@
-import { loadCalendarSyncConfig } from '@/lib/calendar-sync/config'
+import { loadSheetsConfig } from '@/lib/calendar-sync/config'
 import { formatTimestamp } from '@/lib/calendar-sync/format'
 import { createSheetsClient } from '@/lib/calendar-sync/sheets'
 
@@ -82,7 +82,7 @@ export async function GET(request: Request) {
   const date = normalizeDate(searchParams.get('date'))
   const search = clean(searchParams.get('search'))
 
-  const config = loadCalendarSyncConfig()
+  const config = loadSheetsConfig()
   const sheets = createSheetsClient(config)
   const rows = await sheets.listCalendarRows()
 
@@ -117,7 +117,7 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, error: 'Body inválido' }, { status: 400 })
   }
 
-  const config = loadCalendarSyncConfig()
+  const config = loadSheetsConfig()
   const sheets = createSheetsClient(config)
   const result = await sheets.appendCalendarRow(
     toDateRow(body, formatTimestamp(new Date(), config.timezone)),
@@ -140,7 +140,7 @@ export async function PATCH(request: Request) {
     return Response.json({ ok: false, error: 'rowNumber inválido' }, { status: 400 })
   }
 
-  const config = loadCalendarSyncConfig()
+  const config = loadSheetsConfig()
   const sheets = createSheetsClient(config)
   const timestamp = clean(body.timestamp) || formatTimestamp(new Date(), config.timezone)
   const existingRow = await sheets

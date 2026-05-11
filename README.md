@@ -65,6 +65,10 @@ AGENDA_APPS_SCRIPT_URL=https://script.google.com/macros/s/your-deployment-id/exe
 
 If the Apps Script route fails, the app falls back to reading and writing the Google Sheet directly with the service account credentials.
 
+The `/api/agenda` and `/api/agenda-sheet` routes run on the Next.js server, so they need the app running with `npm run dev` locally or deployed on a serverless/Node host such as Vercel. They do not work from a static export alone.
+
+For those Sheets routes, only the Google service account variables are required. `HUBSPOT_ACCESS_TOKEN` is only needed for the calendar sync loop.
+
 ## Deploy on Vercel
 
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.

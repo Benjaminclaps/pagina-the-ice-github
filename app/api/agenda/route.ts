@@ -1,4 +1,4 @@
-import { loadCalendarSyncConfig } from '@/lib/calendar-sync/config'
+import { loadSheetsConfig } from '@/lib/calendar-sync/config'
 import { formatTimestamp } from '@/lib/calendar-sync/format'
 import { createSheetsClient } from '@/lib/calendar-sync/sheets'
 
@@ -175,7 +175,7 @@ function buildItemsFromRows(rows: Array<{ rowNumber: number; timestamp: string; 
 }
 
 async function readLocalAgenda(date: string, search: string): Promise<AgendaSourceResult> {
-  const config = loadCalendarSyncConfig()
+  const config = loadSheetsConfig()
   const sheets = createSheetsClient(config)
   const rows = await sheets.listCalendarRows()
   const items = buildItemsFromRows(rows).filter(item => (date ? item.entregar_el_dia === date : true))
@@ -239,7 +239,7 @@ async function readAgendaItems(date: string, search: string) {
 }
 
 async function createLocalAgenda(body: AgendaPayload) {
-  const config = loadCalendarSyncConfig()
+  const config = loadSheetsConfig()
   const sheets = createSheetsClient(config)
   const timestamp = clean(body.timestamp) || formatTimestamp(new Date(), config.timezone)
 
@@ -288,7 +288,7 @@ async function createLocalAgenda(body: AgendaPayload) {
 }
 
 async function updateLocalAgenda(body: AgendaPayload) {
-  const config = loadCalendarSyncConfig()
+  const config = loadSheetsConfig()
   const sheets = createSheetsClient(config)
   const timestamp = clean(body.timestamp) || formatTimestamp(new Date(), config.timezone)
   const rowNumber = Number(body.rowNumber)
@@ -325,7 +325,7 @@ async function updateLocalAgenda(body: AgendaPayload) {
 }
 
 async function deleteLocalAgenda(rowNumber: number) {
-  const config = loadCalendarSyncConfig()
+  const config = loadSheetsConfig()
   const sheets = createSheetsClient(config)
 
   await sheets.deleteCalendarRow(rowNumber)

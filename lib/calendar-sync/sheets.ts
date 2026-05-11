@@ -1,6 +1,6 @@
 import { google } from 'googleapis'
 
-import type { CalendarSyncConfig } from './config'
+import type { SheetsConfig } from './config'
 
 function quoteSheetName(sheetName: string) {
   if (/^[A-Za-z0-9_]+$/.test(sheetName)) return sheetName
@@ -23,7 +23,7 @@ function isEmptyRow(row: unknown[]) {
   return row.every(cell => !String(cell ?? '').trim())
 }
 
-export function createSheetsClient(config: CalendarSyncConfig) {
+export function createSheetsClient(config: SheetsConfig) {
   const auth = new google.auth.JWT({
     email: config.googleServiceAccountEmail,
     key: config.googlePrivateKey,
