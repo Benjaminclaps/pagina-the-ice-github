@@ -66,6 +66,8 @@ export async function runCalendarSync(config: CalendarSyncConfig): Promise<SyncR
         message,
         '',
         deliverOn,
+        'no',
+        '',
       ])
 
       if (!sheetWrite.updatedRange) {

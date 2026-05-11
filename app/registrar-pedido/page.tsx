@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import TwoWeekCalendar from './_components/TwoWeekCalendar'
 
 const ENCARGADOS = ['Bastian', 'Gus', 'Felipe', 'Benjamin'] as const
 
@@ -25,6 +24,7 @@ type Draft = {
   encargado: Encargado | ''
   mensaje: string
   notas: string
+  pendienteEntrega: boolean
 }
 
 const emptyDraft = (): Draft => ({
@@ -32,6 +32,7 @@ const emptyDraft = (): Draft => ({
   encargado: '',
   mensaje: '',
   notas: '',
+  pendienteEntrega: false,
 })
 
 function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
@@ -46,13 +47,13 @@ function Field({ label, children, hint }: { label: string; children: React.React
 
 const inputBase =
   'w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-[15px] text-white outline-none transition placeholder:text-white/25 focus:border-cyan-400 focus:bg-white/[0.09]'
+const AGENDA_SHEETS_API = '/api/agenda'
 
 export default function RegistrarPedidoPage() {
   const [draft, setDraft] = useState<Draft>(() => emptyDraft())
   const [selectedDate, setSelectedDate] = useState(todayValue())
   const [saved, setSaved] = useState(false)
   const [status, setStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle')
-  const [calendarRefreshToken, setCalendarRefreshToken] = useState(0)
 
   const update = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft(prev => ({ ...prev, [key]: value }))
@@ -60,7 +61,7 @@ export default function RegistrarPedidoPage() {
   const handleSubmit = async () => {
     setStatus('saving')
     try {
-      const response = await fetch('/api/agenda', {
+      const response = await fetch(AGENDA_SHEETS_API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -69,20 +70,31 @@ export default function RegistrarPedidoPage() {
           mensaje: draft.mensaje.trim(),
           notas: draft.notas.trim(),
           entregar_el_dia: selectedDate,
+          pendiente_de_entrega: draft.pendienteEntrega,
+          producto_pendiente_de_entrega: draft.pendienteEntrega,
           cargado_en_hub: false,
         }),
       })
 
-      if (!response.ok) throw new Error('No se pudo guardar el pedido')
+      const payload = await response.json().catch(() => null)
+
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(
+          payload?.remoteFallbackError ||
+            payload?.remoteError ||
+            payload?.error ||
+            'No se pudo guardar el pedido',
+        )
+      }
 
       setSaved(true)
       setStatus('success')
       setDraft(emptyDraft())
-      setCalendarRefreshToken(token => token + 1)
       setTimeout(() => setSaved(false), 1800)
-    } catch {
+    } catch (saveError) {
       setStatus('error')
       setSaved(false)
+      console.error('agenda.save.failed', saveError)
     }
   }
 
@@ -93,9 +105,9 @@ export default function RegistrarPedidoPage() {
           <header className="rounded-[28px] border border-white/10 bg-white/[0.05] px-5 py-5 shadow-2xl shadow-black/20 backdrop-blur-xl md:px-8 md:py-6">
             <p className="text-[11px] uppercase tracking-[0.32em] text-cyan-300 font-semibold">Agenda</p>
             <h1 className="mt-2 text-3xl font-black tracking-tight text-white md:text-4xl">Registrar pedido</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/50">
-              Completa el formulario y lo guardas directo en Google Sheets. Debajo tienes el calendario
-              de dos semanas para buscar y agregar pedidos por día.
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/50">
+              Completa el formulario y lo guardas directo en Google Sheets. El pedido queda listo para
+              revisarlo desde la agenda.
             </p>
           </header>
 
@@ -155,6 +167,23 @@ export default function RegistrarPedidoPage() {
                 />
               </Field>
 
+              <label className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-4">
+                <input
+                  type="checkbox"
+                  checked={draft.pendienteEntrega}
+                  onChange={e => update('pendienteEntrega', e.target.checked)}
+                  className="mt-1 h-4 w-4 rounded border-white/20 bg-white/10 text-cyan-400 focus:ring-cyan-400"
+                />
+                <span className="block">
+                  <span className="block text-[11px] uppercase tracking-[0.28em] text-cyan-300 font-semibold">
+                    Pendiente de entrega
+                  </span>
+                  <span className="mt-1 block text-xs leading-relaxed text-white/45">
+                    Si lo marcas, se guardará como &quot;sí&quot;. Si no, queda como &quot;no&quot;.
+                  </span>
+                </span>
+              </label>
+
               <button
                 type="button"
                 onClick={handleSubmit}
@@ -180,8 +209,6 @@ export default function RegistrarPedidoPage() {
             </div>
           </section>
         </div>
-
-        <TwoWeekCalendar refreshToken={calendarRefreshToken} />
       </div>
     </div>
   )

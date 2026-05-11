@@ -18,6 +18,12 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
+If you need the calendar sync loop that used to run on `dev`, use:
+
+```bash
+npm run sync:dev
+```
+
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
 ## Learn More
@@ -48,6 +54,16 @@ MAKE_API_BASE_URL_SECONDARY=https://us2.make.com/api/v2
 The page posts only `{ account }` to `/api/make/trigger`, and that route calls the Make API to run the selected scenario on demand.
 
 On Vercel, configure these variables in the project settings for both Preview and Production. The local `.env.local` file is not deployed.
+
+## Agenda sync
+
+If you want to override the Apps Script Web App used by the agenda, set:
+
+```bash
+AGENDA_APPS_SCRIPT_URL=https://script.google.com/macros/s/your-deployment-id/exec
+```
+
+If the Apps Script route fails, the app falls back to reading and writing the Google Sheet directly with the service account credentials.
 
 ## Deploy on Vercel
 
