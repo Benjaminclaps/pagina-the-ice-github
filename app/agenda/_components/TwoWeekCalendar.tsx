@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { type DragEvent, type MouseEvent, useEffect, useMemo, useRef, useState } from 'react'
 
 const ENCARGADOS = ['Bastian', 'Gus', 'Felipe', 'Benjamin'] as const
 const AGENDA_SHEETS_API = '/api/agenda'
@@ -53,6 +53,13 @@ const AGENDA_WORKSPACE_CACHE_KEY = 'pagina-the-ice.agenda-workspace.v1'
 
 const inputBase =
   'w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-[15px] text-white outline-none transition placeholder:text-white/25 focus:border-cyan-400 focus:bg-white/[0.09]'
+
+function openDatePicker(event: MouseEvent<HTMLInputElement>) {
+  const input = event.currentTarget as HTMLInputElement & { showPicker?: () => void }
+  if (typeof input.showPicker === 'function') {
+    input.showPicker()
+  }
+}
 
 function todayValue() {
   const date = new Date()
@@ -199,25 +206,11 @@ function readWorkspaceCache(): WorkspaceCache {
   }
 }
 
-function mergeAgendaItems(sheetItems: AgendaItem[], agendaItems: AgendaItem[]) {
+function dedupeAgendaItems(items: AgendaItem[]) {
   const byKey = new Map<string, AgendaItem>()
 
-  for (const item of sheetItems) {
+  for (const item of items) {
     byKey.set(readAgendaKey(item), item)
-  }
-
-  for (const item of agendaItems) {
-    const key = readAgendaKey(item)
-    const current = byKey.get(key)
-    if (current) {
-      byKey.set(key, {
-        ...current,
-        ...item,
-      })
-      continue
-    }
-
-    byKey.set(key, item)
   }
 
   return [...byKey.values()]
@@ -268,6 +261,36 @@ async function readAgendaSource(
   }
 }
 
+async function loadAgendaItems(signal?: AbortSignal) {
+  const primary = await readAgendaSource('/api/agenda', signal)
+
+  if (primary.ok) {
+    return {
+      ...primary,
+      items: dedupeAgendaItems(primary.items),
+    }
+  }
+
+  const fallback = await readAgendaSource('/api/agenda-sheet', signal)
+
+  if (fallback.ok) {
+    return {
+      ...fallback,
+      items: dedupeAgendaItems(fallback.items),
+      error: primary.error,
+      fallbackUsed: true,
+    }
+  }
+
+  return {
+    ok: false as const,
+    source: primary.source,
+    items: [],
+    error: primary.error ?? fallback.error,
+    fallbackUsed: true,
+  }
+}
+
 function blankDraft(date: string): Draft {
   return {
     cliente: '',
@@ -301,21 +324,42 @@ function draftFromModalState(state: OrderModalState | null): Draft {
 function OrderCard({
   item,
   onClick,
+  onToggleHub,
+  showHubToggle = false,
+  draggable = false,
+  dragging = false,
+  onDragStart,
+  onDragEnd,
 }: {
   item: AgendaItem
   onClick: () => void
+  onToggleHub?: (nextValue: boolean) => void
+  showHubToggle?: boolean
+  draggable?: boolean
+  dragging?: boolean
+  onDragStart?: (event: DragEvent<HTMLElement>) => void
+  onDragEnd?: (event: DragEvent<HTMLElement>) => void
 }) {
   return (
-    <button
-      type="button"
-      onClick={event => {
-        event.stopPropagation()
-        onClick()
+    <article
+      role="button"
+      tabIndex={0}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onClick={() => onClick()}
+      onKeyDown={event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onClick()
+        }
       }}
-      className="block w-full rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-3 text-left shadow-[0_12px_30px_rgba(0,0,0,0.16)] transition hover:-translate-y-0.5 hover:border-cyan-300/25 hover:bg-white/[0.07]"
+      className={`block w-full rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-3 text-left shadow-[0_12px_30px_rgba(0,0,0,0.16)] transition hover:-translate-y-0.5 hover:border-cyan-300/25 hover:bg-white/[0.07] ${
+        draggable ? 'cursor-grab active:cursor-grabbing' : ''
+      } ${dragging ? 'opacity-50 ring-1 ring-cyan-300/40' : ''}`}
     >
       <div className="flex items-start justify-between gap-2">
-        <div>
+        <div className="min-w-0">
           <p className="text-sm font-semibold leading-5 text-white">{item.cliente?.trim() || 'Sin cliente'}</p>
           <p className="mt-1 text-[11px] uppercase tracking-[0.16em] text-cyan-100/60">
             {item.encargado?.trim() || 'Sin encargado'}
@@ -333,20 +377,43 @@ function OrderCard({
       {item.notas?.trim() ? (
         <p className="mt-2 text-[11px] leading-5 text-white/38">Notas: {formatShortText(item.notas, 70)}</p>
       ) : null}
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         <span className={`rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] ${
           normalizeDeliveryStatus(item.pendiente_de_entrega ?? item.producto_pendiente_de_entrega)
             ? 'border-amber-200/25 bg-amber-200/10 text-amber-50'
             : 'border-white/10 bg-white/[0.04] text-white/55'
         }`}>
-          Entrega: {yesNoLabel(normalizeDeliveryStatus(item.pendiente_de_entrega ?? item.producto_pendiente_de_entrega))}
+          PDE: {yesNoLabel(normalizeDeliveryStatus(item.pendiente_de_entrega ?? item.producto_pendiente_de_entrega))}
         </span>
+
+        {showHubToggle && onToggleHub ? (
+          <label
+            className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] ${
+              item.hub_ok
+                ? 'border-emerald-300/25 bg-emerald-300/10 text-emerald-50'
+                : 'border-white/10 bg-white/[0.04] text-white/55'
+            }`}
+            onClick={event => event.stopPropagation()}
+          >
+            <input
+              type="checkbox"
+              checked={Boolean(item.hub_ok ?? item.cargado_en_hub)}
+              onChange={event => {
+                event.stopPropagation()
+                onToggleHub(event.target.checked)
+              }}
+              onClick={event => event.stopPropagation()}
+              className="h-3.5 w-3.5 rounded border-white/20 bg-white/10 text-emerald-400 focus:ring-emerald-400"
+            />
+            <span>Hub cargado</span>
+          </label>
+        ) : null}
       </div>
       <div className="mt-3 flex items-center justify-between">
         <span className="text-[11px] uppercase tracking-[0.18em] text-cyan-200/55">Editar</span>
         <span className="text-[11px] text-white/35">Click para abrir</span>
       </div>
-    </button>
+    </article>
   )
 }
 
@@ -442,8 +509,9 @@ function OrderComposerModal({
   onSaved: () => void
 }) {
   const [draft, setDraft] = useState<Draft>(() => draftFromModalState(state))
-  const [status, setStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle')
+  const [status, setStatus] = useState<'idle' | 'saving' | 'deleting' | 'success' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
+  const itemRowNumber = state?.item?.rowNumber ?? state?.item?.id ?? null
 
   const update = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft(prev => ({ ...prev, [key]: value }))
@@ -486,6 +554,43 @@ function OrderComposerModal({
     }
   }
 
+  const handleDelete = async () => {
+    if (state?.mode !== 'edit') return
+    if (!itemRowNumber) {
+      setError('No se encontró la fila del pedido para eliminarlo')
+      return
+    }
+
+    const confirmed = window.confirm('¿Eliminar este pedido? Esta acción no se puede deshacer.')
+    if (!confirmed) return
+
+    setStatus('deleting')
+    setError(null)
+
+    try {
+      const response = await fetch(AGENDA_SHEETS_API, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rowNumber: itemRowNumber,
+        }),
+      })
+
+      const responsePayload = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        throw new Error(responsePayload?.error ?? 'No se pudo eliminar el pedido')
+      }
+
+      setStatus('success')
+      onSaved()
+      onClose()
+    } catch (deleteError) {
+      setStatus('error')
+      setError(deleteError instanceof Error ? deleteError.message : 'No se pudo eliminar el pedido')
+    }
+  }
+
   if (!open) return null
 
   return (
@@ -516,6 +621,18 @@ function OrderComposerModal({
         </div>
 
         <div className="mt-5 grid gap-4">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+            <p className="text-[11px] uppercase tracking-[0.28em] text-cyan-200/70">Previsualización</p>
+            <p className="mt-2 text-sm font-semibold text-white">{draft.cliente.trim() || 'Sin cliente'}</p>
+            <p className="mt-1 text-xs text-white/45">{draft.encargado || 'Sin encargado'}</p>
+            <div className="mt-3 rounded-2xl border border-white/10 bg-black/25 p-3">
+              <p className="text-[10px] uppercase tracking-[0.22em] text-white/35">Mensaje actual</p>
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-white/82">
+                {draft.mensaje.trim() || 'Sin mensaje todavía.'}
+              </p>
+            </div>
+          </div>
+
           <label className="grid gap-2">
             <span className="text-[11px] uppercase tracking-[0.28em] text-cyan-300 font-semibold">
               Cliente
@@ -537,7 +654,8 @@ function OrderComposerModal({
               type="date"
               value={draft.entregar_el_dia}
               onChange={e => update('entregar_el_dia', e.target.value)}
-              className={inputBase}
+              onClick={openDatePicker}
+              className={`${inputBase} cursor-pointer`}
             />
           </label>
 
@@ -604,9 +722,20 @@ function OrderComposerModal({
         </div>
 
         <div className="mt-6 flex flex-col gap-3 md:flex-row md:justify-end">
+          {state?.mode === 'edit' ? (
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={status === 'saving' || status === 'deleting'}
+              className="rounded-2xl border border-rose-400/25 bg-rose-500/10 px-4 py-3 text-sm font-bold uppercase tracking-[0.18em] text-rose-100 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {status === 'deleting' ? 'Eliminando...' : 'Eliminar pedido'}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onClose}
+            disabled={status === 'saving' || status === 'deleting'}
             className="rounded-2xl border border-white/12 bg-white/[0.04] px-4 py-3 text-sm font-semibold text-white/78 transition hover:bg-white/[0.08]"
           >
             Cancelar
@@ -614,6 +743,7 @@ function OrderComposerModal({
           <button
             type="button"
             onClick={handleSubmit}
+            disabled={status === 'saving' || status === 'deleting'}
             className="rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 px-4 py-3 text-sm font-bold uppercase tracking-[0.18em] text-white shadow-lg shadow-cyan-950/30 transition hover:from-cyan-400 hover:to-blue-500"
           >
             {status === 'saving'
@@ -645,6 +775,8 @@ export default function TwoWeekCalendar() {
   const [modalState, setModalState] = useState<OrderModalState | null>(null)
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [visibleRange, setVisibleRange] = useState<{ start: string; end: string } | null>(null)
+  const [draggingKey, setDraggingKey] = useState<string | null>(null)
+  const [dragOverDate, setDragOverDate] = useState<string | null>(null)
   const [hydrated, setHydrated] = useState(false)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const dayRefs = useRef<Array<HTMLElement | null>>([])
@@ -716,34 +848,18 @@ export default function TwoWeekCalendar() {
       setLoading(true)
       setError(null)
 
-      const [sheetResult, agendaResult] = await Promise.all([
-        readAgendaSource('/api/agenda-sheet', controller.signal),
-        readAgendaSource('/api/agenda', controller.signal),
-      ])
+      const result = await loadAgendaItems(controller.signal)
 
       if (controller.signal.aborted) return
 
-      const successfulResults = [sheetResult, agendaResult].filter(result => result.ok)
-
-      if (successfulResults.length === 0) {
+      if (!result.ok) {
         setItems([])
-        setError(
-          sheetResult.error && agendaResult.error
-            ? `${sheetResult.error} · ${agendaResult.error}`
-            : sheetResult.error || agendaResult.error || 'No se pudo cargar la agenda',
-        )
+        setError(result.error ?? 'No se pudo cargar la agenda')
         setLoading(false)
         return
       }
 
-      if (successfulResults.length < 2) {
-        const failed = [sheetResult, agendaResult].find(result => !result.ok)
-        if (failed?.error) {
-          console.warn(`[agenda] fuente no disponible: ${failed.source}`, failed.error)
-        }
-      }
-
-      setItems(mergeAgendaItems(sheetResult.items, agendaResult.items))
+      setItems(result.items)
       setError(null)
       setLoading(false)
     }
@@ -896,36 +1012,114 @@ export default function TwoWeekCalendar() {
       setSaveError(message)
     }
   }
-  const refreshItems = async () => {
-    const [sheetResult, agendaResult] = await Promise.all([
-      readAgendaSource('/api/agenda-sheet'),
-      readAgendaSource('/api/agenda'),
-    ])
 
-    const successfulResults = [sheetResult, agendaResult].filter(result => result.ok)
+  const moveOrderToDate = async (item: AgendaItem, nextDate: string) => {
+    const currentDate = item.entregar_el_dia?.trim() ?? ''
+    if (!nextDate || nextDate === currentDate) return
 
-    if (successfulResults.length === 0) {
-      setSaveError(
-        sheetResult.error && agendaResult.error
-          ? `${sheetResult.error} · ${agendaResult.error}`
-          : sheetResult.error || agendaResult.error || 'No se pudo actualizar la agenda',
-      )
+    const key = readAgendaKey(item)
+    setSaveError(null)
+
+    const previousItems = items
+
+    setItems(prev =>
+      prev.map(current =>
+        readAgendaKey(current) === key
+          ? {
+              ...current,
+              entregar_el_dia: nextDate,
+            }
+          : current,
+      ),
+    )
+
+    try {
+      const response = await fetch('/api/agenda', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...item,
+          entregar_el_dia: nextDate,
+          rowNumber: item.rowNumber ?? null,
+          agenda_key: key,
+        }),
+      })
+
+      const data = await response.json().catch(() => null)
+      if (!response.ok || data?.ok === false) {
+        throw new Error(data?.error ?? 'No se pudo mover el pedido')
+      }
+
+      setSelectedDate(prev => (viewMode === 'day' && prev === currentDate ? nextDate : prev))
+    } catch (error) {
+      setItems(previousItems)
+      const message = error instanceof Error ? error.message : 'No se pudo mover el pedido'
+      setSaveError(message)
+    } finally {
+      setDraggingKey(null)
+      setDragOverDate(null)
+    }
+  }
+
+  const handleCardDragStart = (event: DragEvent<HTMLElement>, item: AgendaItem) => {
+    const key = readAgendaKey(item)
+    setDraggingKey(key)
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', key)
+  }
+
+  const handleCardDragEnd = () => {
+    setDraggingKey(null)
+    setDragOverDate(null)
+  }
+
+  const handleDayDragOver = (event: DragEvent<HTMLElement>, date: string) => {
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    if (dragOverDate !== date) {
+      setDragOverDate(date)
+    }
+  }
+
+  const handleDayDragLeave = (date: string) => {
+    if (dragOverDate === date) {
+      setDragOverDate(null)
+    }
+  }
+
+  const handleDayDrop = async (event: DragEvent<HTMLElement>, date: string) => {
+    event.preventDefault()
+    const key = event.dataTransfer.getData('text/plain')
+    if (!key) {
+      setDragOverDate(null)
       return
     }
 
-    if (successfulResults.length < 2) {
-      const failed = [sheetResult, agendaResult].find(result => !result.ok)
-      if (failed?.error) {
-        console.warn(`[agenda] refresh parcial: ${failed.source}`, failed.error)
-      }
+    const item = items.find(current => readAgendaKey(current) === key)
+    if (!item) {
+      setDragOverDate(null)
+      return
     }
 
-    setItems(mergeAgendaItems(sheetResult.items, agendaResult.items))
+    await moveOrderToDate(item, date)
+  }
+
+  const refreshItems = async () => {
+    const result = await loadAgendaItems()
+
+    if (!result.ok) {
+      setSaveError(result.error ?? 'No se pudo actualizar la agenda')
+      return
+    }
+
+    setItems(result.items)
     setHubStatusByKey(prev => {
       const next = { ...prev }
       let changed = false
 
-      mergeAgendaItems(sheetResult.items, agendaResult.items).forEach((item: AgendaItem) => {
+      result.items.forEach((item: AgendaItem) => {
         const key = readAgendaKey(item)
         if (!(key in next)) {
           next[key] = normalizeHubStatus(item.hub_ok ?? item.cargado_en_hub ?? item.estado)
@@ -991,7 +1185,11 @@ export default function TwoWeekCalendar() {
   }, [days, viewMode])
 
   return (
-    <section className="space-y-6">
+    <section
+      className={`space-y-6 ${
+        viewMode === 'twoWeeks' ? 'lg:relative lg:left-1/2 lg:w-screen lg:-translate-x-1/2 lg:px-4 xl:px-6' : ''
+      }`}
+    >
       <div className="rounded-[28px] border border-cyan-300/18 bg-[linear-gradient(180deg,rgba(13,28,46,0.92),rgba(8,13,24,0.96))] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.24)]">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -1021,79 +1219,65 @@ export default function TwoWeekCalendar() {
           </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-2">
-          {([
-            ['day', 'Vista de día'],
-            ['scroll3', 'Vista deslizable 3 días'],
-            ['twoWeeks', 'Vista 2 semanas'],
-          ] as const).map(([value, label]) => {
-            const active = viewMode === value
+        <div className="mt-4 grid gap-3 lg:grid-cols-3">
+          <label className="block space-y-2">
+            <span className="block text-[11px] uppercase tracking-[0.28em] text-cyan-300 font-semibold">
+              Vista
+            </span>
+            <select
+              value={viewMode}
+              onChange={e => setViewMode(e.target.value as CalendarView)}
+              className={inputBase}
+            >
+              <option value="day">Vista de día</option>
+              <option value="scroll3">Vista deslizable 3 días</option>
+              <option value="twoWeeks">Vista 2 semanas</option>
+            </select>
+          </label>
 
-            return (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setViewMode(value)}
-                className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] transition ${
-                  active
-                    ? 'border-cyan-400 bg-cyan-400/15 text-cyan-200'
-                    : 'border-white/10 bg-white/[0.05] text-white/65 hover:bg-white/[0.08] hover:text-white'
-                }`}
-              >
-                {label}
-              </button>
-            )
-          })}
-        </div>
+          <label className="block space-y-2">
+            <span className="block text-[11px] uppercase tracking-[0.28em] text-cyan-300 font-semibold">
+              Hub cargado
+            </span>
+            <select
+              value={hubFilter}
+              onChange={e => setHubFilter(e.target.value as HubFilter)}
+              className={inputBase}
+            >
+              <option value="all">Todos</option>
+              <option value="ok">Sí, cargado</option>
+              <option value="pending">No cargado</option>
+            </select>
+            <p className="text-[11px] leading-5 text-white/38">
+              {hubFilter === 'all'
+                ? `Mostrando ${searchItems.length} pedidos`
+                : hubFilter === 'ok'
+                  ? `Mostrando ${okCount} pedidos cargados en hub`
+                  : `Mostrando ${pendingCount} pedidos no cargados en hub`}
+            </p>
+          </label>
 
-        <div className="mt-4 flex flex-wrap gap-2">
-          {([
-            ['all', `Todos (${searchItems.length})`],
-            ['ok', `Con OK (${okCount})`],
-            ['pending', `Pendientes (${pendingCount})`],
-          ] as const).map(([value, label]) => {
-            const active = hubFilter === value
-
-            return (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setHubFilter(value)}
-                className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] transition ${
-                  active
-                    ? 'border-cyan-400 bg-cyan-400/15 text-cyan-200'
-                    : 'border-white/10 bg-white/[0.05] text-white/65 hover:bg-white/[0.08] hover:text-white'
-                }`}
-              >
-                {label}
-              </button>
-            )
-          })}
-        </div>
-
-        <div className="mt-3 flex flex-wrap gap-2">
-          {([
-            ['all', 'Pendiente entrega: todos'],
-            ['yes', `Pendiente entrega: sí (${deliveryYesCount})`],
-            ['no', `Pendiente entrega: no (${deliveryNoCount})`],
-          ] as const).map(([value, label]) => {
-            const active = deliveryFilter === value
-
-            return (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setDeliveryFilter(value)}
-                className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] transition ${
-                  active
-                    ? 'border-amber-400 bg-amber-400/15 text-amber-100'
-                    : 'border-white/10 bg-white/[0.05] text-white/65 hover:bg-white/[0.08] hover:text-white'
-                }`}
-              >
-                {label}
-              </button>
-            )
-          })}
+          <label className="block space-y-2">
+            <span className="block text-[11px] uppercase tracking-[0.28em] text-cyan-300 font-semibold">
+              Pendiente de entrega
+            </span>
+            <select
+              value={deliveryFilter}
+              onChange={e => setDeliveryFilter(e.target.value as DeliveryFilter)}
+              className={inputBase}
+            >
+              <option value="all">Todos</option>
+              <option value="no">No pendiente</option>
+              <option value="yes">Sí pendiente</option>
+            </select>
+            <p className="text-[11px] leading-5 text-white/38">
+              {deliveryFilter === 'all'
+                ? `Mostrando ${searchItems.length} pedidos`
+                : deliveryFilter === 'yes'
+                  ? `Mostrando ${deliveryYesCount} pedidos pendientes`
+                  : `Mostrando ${deliveryNoCount} pedidos no pendientes`}
+            </p>
+          </label>
         </div>
 
         <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
@@ -1106,7 +1290,8 @@ export default function TwoWeekCalendar() {
                 type="date"
                 value={selectedDate}
                 onChange={e => setSelectedDate(e.target.value)}
-                className={inputBase}
+                onClick={openDatePicker}
+                className={`${inputBase} cursor-pointer`}
               />
             </label>
           </div>
@@ -1188,15 +1373,28 @@ export default function TwoWeekCalendar() {
                   {selectedDateItems.map(item => (
                     <div
                       key={item.agendaKey}
-                      className="w-full rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-left transition hover:bg-white/[0.06]"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => openEditor(item)}
+                      onKeyDown={event => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          openEditor(item)
+                        }
+                      }}
+                      className="w-full rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-left transition hover:bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-cyan-300/35"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex min-w-0 items-start gap-3">
-                          <label className="mt-1 inline-flex items-center">
+                          <label className="mt-1 inline-flex items-center" onClick={event => event.stopPropagation()}>
                             <input
                               type="checkbox"
                               checked={item.hubOk}
-                              onChange={e => updateHubStatus(item, e.target.checked)}
+                              onChange={e => {
+                                e.stopPropagation()
+                                updateHubStatus(item, e.target.checked)
+                              }}
+                              onClick={event => event.stopPropagation()}
                               className="h-4 w-4 rounded border-white/20 bg-white/10 text-cyan-400 focus:ring-cyan-400"
                             />
                           </label>
@@ -1215,7 +1413,7 @@ export default function TwoWeekCalendar() {
                                 : 'border-white/10 bg-white/5 text-white/60'
                             }`}
                           >
-                            {item.hubOk ? 'Hub OK' : 'Pendiente'}
+                            {item.hubOk ? 'Hub cargado: Sí' : 'Hub cargado: No'}
                           </span>
                           <span
                             className={`rounded-full border px-2.5 py-1 text-[11px] ${
@@ -1224,17 +1422,26 @@ export default function TwoWeekCalendar() {
                                 : 'border-white/10 bg-white/5 text-white/60'
                             }`}
                           >
-                            Entrega: {yesNoLabel(normalizeDeliveryStatus(item.pendiente_de_entrega ?? item.producto_pendiente_de_entrega))}
+                            PDE: {yesNoLabel(normalizeDeliveryStatus(item.pendiente_de_entrega ?? item.producto_pendiente_de_entrega))}
                           </span>
                           <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-white/60">
                             {prettyDate(item.entregar_el_dia || selectedDate)}
                           </span>
                         </div>
                       </div>
+                      <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                        <p className="text-[10px] uppercase tracking-[0.22em] text-white/35">Mensaje</p>
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-white/80">
+                          {item.mensaje?.trim() || 'Sin mensaje'}
+                        </p>
+                      </div>
                       <div className="mt-3">
                         <button
                           type="button"
-                          onClick={() => setExpandedKey(expandedKey === item.agendaKey ? null : item.agendaKey)}
+                          onClick={event => {
+                            event.stopPropagation()
+                            setExpandedKey(expandedKey === item.agendaKey ? null : item.agendaKey)
+                          }}
                           className="text-[11px] uppercase tracking-[0.2em] text-cyan-300"
                         >
                           {expandedKey === item.agendaKey ? 'Cerrar detalle' : 'Ver mensaje'}
@@ -1281,11 +1488,14 @@ export default function TwoWeekCalendar() {
                           openDayDetail(date)
                         }
                       }}
-                      className={`snap-start flex-none self-start rounded-[26px] border p-4 shadow-[0_18px_50px_rgba(0,0,0,0.18)] ${
+                      onDragOver={event => handleDayDragOver(event, date)}
+                      onDragLeave={() => handleDayDragLeave(date)}
+                      onDrop={event => void handleDayDrop(event, date)}
+                      className={`snap-start flex-none self-start rounded-[26px] border p-4 shadow-[0_18px_50px_rgba(0,0,0,0.18)] transition ${
                         isToday(date)
                           ? 'border-amber-300/55 bg-[linear-gradient(180deg,rgba(58,41,10,0.98),rgba(22,17,6,0.98))] shadow-[0_0_0_1px_rgba(251,191,36,0.12),0_18px_50px_rgba(0,0,0,0.18),0_0_36px_rgba(245,158,11,0.2)]'
                           : 'border-white/10 bg-[linear-gradient(180deg,rgba(10,18,32,0.9),rgba(7,12,22,0.92))]'
-                      }`}
+                      } ${dragOverDate === date ? 'ring-2 ring-cyan-300/45 ring-offset-0' : ''}`}
                       style={{
                         cursor: 'pointer',
                         width: 'clamp(18rem, 31vw, 24rem)',
@@ -1335,6 +1545,12 @@ export default function TwoWeekCalendar() {
                               key={`${date}-${cardIndex}-${item.id ?? item.rowNumber ?? item.cliente}`}
                               item={item}
                               onClick={() => openEditor(item)}
+                              onToggleHub={nextValue => updateHubStatus(item, nextValue)}
+                              showHubToggle
+                              draggable
+                              dragging={draggingKey === readAgendaKey(item)}
+                              onDragStart={event => handleCardDragStart(event, item)}
+                              onDragEnd={handleCardDragEnd}
                             />
                           ))
                         ) : (
@@ -1350,12 +1566,17 @@ export default function TwoWeekCalendar() {
             </div>
           ) : (
             <div className="space-y-6">
+              <div className="rounded-[28px] border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white/55 lg:hidden">
+                La vista de dos semanas está pensada para escritorio. Cambia a vista de día o deslizable
+                en pantalla chica.
+              </div>
+
               {weeks.map((week, weekIndex) => {
                 const weekStart = week[0]
                 const weekEnd = week[6]
 
                 return (
-                  <div key={weekStart} className="space-y-3">
+                  <div key={weekStart} className="hidden space-y-3 lg:block">
                     <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                       <div>
                         <p className="text-[11px] uppercase tracking-[0.28em] text-white/42">
@@ -1367,7 +1588,7 @@ export default function TwoWeekCalendar() {
                       </div>
                     </div>
 
-                    <div className="grid gap-3 xl:grid-cols-7">
+                    <div className="grid gap-4 xl:grid-cols-7 2xl:gap-5">
                       {week.map(date => {
                         const dayItems = itemsByDate.get(date) ?? []
                         const hasSearch = Boolean(normalizedSearch)
@@ -1384,11 +1605,14 @@ export default function TwoWeekCalendar() {
                                 openDayDetail(date)
                               }
                             }}
-                            className={`min-h-[220px] rounded-[26px] border p-4 shadow-[0_18px_50px_rgba(0,0,0,0.18)] ${
+                            onDragOver={event => handleDayDragOver(event, date)}
+                            onDragLeave={() => handleDayDragLeave(date)}
+                            onDrop={event => void handleDayDrop(event, date)}
+                            className={`min-h-[280px] rounded-[26px] border p-5 shadow-[0_18px_50px_rgba(0,0,0,0.18)] transition lg:min-h-[360px] 2xl:min-h-[420px] ${
                               isToday(date)
                                 ? 'border-amber-300/55 bg-[linear-gradient(180deg,rgba(58,41,10,0.98),rgba(22,17,6,0.98))] shadow-[0_0_0_1px_rgba(251,191,36,0.12),0_18px_50px_rgba(0,0,0,0.18),0_0_36px_rgba(245,158,11,0.2)]'
                                 : 'border-white/10 bg-[linear-gradient(180deg,rgba(10,18,32,0.9),rgba(7,12,22,0.92))]'
-                            }`}
+                            } ${dragOverDate === date ? 'ring-2 ring-cyan-300/45 ring-offset-0' : ''}`}
                             style={{ cursor: 'pointer' }}
                           >
                             <div className="flex items-start justify-between gap-3">
@@ -1435,6 +1659,10 @@ export default function TwoWeekCalendar() {
                                     key={`${date}-${cardIndex}-${item.id ?? item.rowNumber ?? item.cliente}`}
                                     item={item}
                                     onClick={() => openEditor(item)}
+                                    draggable
+                                    dragging={draggingKey === readAgendaKey(item)}
+                                    onDragStart={event => handleCardDragStart(event, item)}
+                                    onDragEnd={handleCardDragEnd}
                                   />
                                 ))
                               ) : (

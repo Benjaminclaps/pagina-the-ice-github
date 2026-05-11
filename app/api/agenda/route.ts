@@ -238,15 +238,7 @@ async function readAgendaItems(date: string, search: string) {
   }
 }
 
-async function proxyToAppsScript(method: 'POST' | 'PATCH', body: unknown) {
-  return fetchJsonWithTimeout(getAppsScriptUrl(), {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-}
-
-async function writeLocalAgenda(body: AgendaPayload) {
+async function createLocalAgenda(body: AgendaPayload) {
   const config = loadCalendarSyncConfig()
   const sheets = createSheetsClient(config)
   const timestamp = clean(body.timestamp) || formatTimestamp(new Date(), config.timezone)
@@ -295,6 +287,57 @@ async function writeLocalAgenda(body: AgendaPayload) {
   }
 }
 
+async function updateLocalAgenda(body: AgendaPayload) {
+  const config = loadCalendarSyncConfig()
+  const sheets = createSheetsClient(config)
+  const timestamp = clean(body.timestamp) || formatTimestamp(new Date(), config.timezone)
+  const rowNumber = Number(body.rowNumber)
+
+  if (!Number.isFinite(rowNumber) || rowNumber < 2) {
+    throw new Error('Falta rowNumber válido para actualizar el pedido')
+  }
+
+  const existingRow = await sheets.listCalendarRows().then(rows => rows.find(row => row.rowNumber === rowNumber))
+
+  if (!existingRow) {
+    throw new Error('No se encontró la fila a actualizar en Sheets')
+  }
+
+  const result = await sheets.updateCalendarRow(
+    rowNumber,
+    toDateRow(
+      {
+        ...existingRow,
+        ...body,
+        timestamp,
+      },
+      timestamp,
+      existingRow,
+    ),
+  )
+
+  return {
+    ok: true,
+    source: 'sheets' as const,
+    fallbackUsed: true,
+    updatedRange: result.updatedRange ?? null,
+  }
+}
+
+async function deleteLocalAgenda(rowNumber: number) {
+  const config = loadCalendarSyncConfig()
+  const sheets = createSheetsClient(config)
+
+  await sheets.deleteCalendarRow(rowNumber)
+
+  return {
+    ok: true,
+    source: 'sheets' as const,
+    fallbackUsed: true,
+    message: 'Pedido eliminado',
+  }
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const date = normalizeDate(searchParams.get('date'))
@@ -331,28 +374,14 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, error: 'Body inválido' }, { status: 400 })
   }
 
-  const remote = await proxyToAppsScript('POST', body)
-  const payload = remote.payload as { ok?: boolean; error?: string } | null
-
-  if (remote.ok && payload?.ok !== false) {
-    return Response.json(payload ?? { ok: true }, { status: remote.status })
-  }
-
   try {
-    const local = await writeLocalAgenda(body as AgendaPayload)
-    return Response.json(
-      {
-        ...local,
-        remoteFallbackError: payload?.error ?? remote.error ?? null,
-      },
-      { status: 200 },
-    )
+    const local = await createLocalAgenda(body as AgendaPayload)
+    return Response.json(local, { status: 200 })
   } catch (error) {
     return Response.json(
       {
         ok: false,
         error: error instanceof Error ? error.message : 'No se pudo guardar el pedido',
-        remoteError: payload?.error ?? remote.error ?? null,
       },
       { status: 502 },
     )
@@ -366,28 +395,41 @@ export async function PATCH(request: Request) {
     return Response.json({ ok: false, error: 'Body inválido' }, { status: 400 })
   }
 
-  const remote = await proxyToAppsScript('PATCH', body)
-  const payload = remote.payload as { ok?: boolean; error?: string } | null
-
-  if (remote.ok && payload?.ok !== false) {
-    return Response.json(payload ?? { ok: true }, { status: remote.status })
-  }
-
   try {
-    const local = await writeLocalAgenda(body as AgendaPayload)
-    return Response.json(
-      {
-        ...local,
-        remoteFallbackError: payload?.error ?? remote.error ?? null,
-      },
-      { status: 200 },
-    )
+    const local = await updateLocalAgenda(body as AgendaPayload)
+    return Response.json(local, { status: 200 })
   } catch (error) {
     return Response.json(
       {
         ok: false,
         error: error instanceof Error ? error.message : 'No se pudo actualizar el pedido',
-        remoteError: payload?.error ?? remote.error ?? null,
+      },
+      { status: 502 },
+    )
+  }
+}
+
+export async function DELETE(request: Request) {
+  const body = await request.json().catch(() => null)
+
+  if (!body || typeof body !== 'object') {
+    return Response.json({ ok: false, error: 'Body inválido' }, { status: 400 })
+  }
+
+  const rowNumber = Number((body as AgendaPayload).rowNumber ?? (body as { id?: number | string | null }).id)
+
+  if (!Number.isFinite(rowNumber) || rowNumber < 2) {
+    return Response.json({ ok: false, error: 'Falta rowNumber válido para eliminar el pedido' }, { status: 400 })
+  }
+
+  try {
+    const local = await deleteLocalAgenda(rowNumber)
+    return Response.json(local, { status: 200 })
+  } catch (error) {
+    return Response.json(
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : 'No se pudo eliminar el pedido',
       },
       { status: 502 },
     )

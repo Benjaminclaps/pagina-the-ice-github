@@ -64,11 +64,11 @@ function doPost(e) {
     var body = JSON.parse((e && e.postData && e.postData.contents) || '{}')
     var sheet = getSheet()
 
-    if (body.action === 'update_hub_status') {
-      var rowNumber = Number(body.rowNumber)
+  if (body.action === 'update_hub_status') {
+    var rowNumber = Number(body.rowNumber)
 
-      if (!rowNumber || rowNumber < 2) {
-        throw new Error('Falta rowNumber valido para actualizar cargado_en_hub.')
+    if (!rowNumber || rowNumber < 2) {
+      throw new Error('Falta rowNumber valido para actualizar cargado_en_hub.')
       }
 
       var hubValue = isHubOk(body.cargado_en_hub || body.hub_ok) ? 'OK' : ''
@@ -80,6 +80,25 @@ function doPost(e) {
           JSON.stringify({
             ok: true,
             message: 'Estado cargado_en_hub actualizado',
+          }),
+        )
+        .setMimeType(ContentService.MimeType.JSON)
+    }
+
+    if (body.action === 'delete_row') {
+      var deleteRowNumber = Number(body.rowNumber)
+
+      if (!deleteRowNumber || deleteRowNumber < 2) {
+        throw new Error('Falta rowNumber valido para eliminar el pedido.')
+      }
+
+      sheet.deleteRow(deleteRowNumber)
+
+      return ContentService
+        .createTextOutput(
+          JSON.stringify({
+            ok: true,
+            message: 'Pedido eliminado',
           }),
         )
         .setMimeType(ContentService.MimeType.JSON)

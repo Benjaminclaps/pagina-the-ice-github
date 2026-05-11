@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { type MouseEvent, useState } from 'react'
 
 const ENCARGADOS = ['Bastian', 'Gus', 'Felipe', 'Benjamin'] as const
 
@@ -48,6 +48,13 @@ function Field({ label, children, hint }: { label: string; children: React.React
 const inputBase =
   'w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-[15px] text-white outline-none transition placeholder:text-white/25 focus:border-cyan-400 focus:bg-white/[0.09]'
 const AGENDA_SHEETS_API = '/api/agenda'
+
+function openDatePicker(event: MouseEvent<HTMLInputElement>) {
+  const input = event.currentTarget as HTMLInputElement & { showPicker?: () => void }
+  if (typeof input.showPicker === 'function') {
+    input.showPicker()
+  }
+}
 
 export default function RegistrarPedidoPage() {
   const [draft, setDraft] = useState<Draft>(() => emptyDraft())
@@ -128,7 +135,8 @@ export default function RegistrarPedidoPage() {
                   type="date"
                   value={selectedDate}
                   onChange={e => setSelectedDate(e.target.value)}
-                  className={inputBase}
+                  onClick={openDatePicker}
+                  className={`${inputBase} cursor-pointer`}
                 />
               </Field>
 

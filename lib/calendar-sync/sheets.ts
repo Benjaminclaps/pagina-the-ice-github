@@ -33,6 +33,31 @@ export function createSheetsClient(config: CalendarSyncConfig) {
   const sheets = google.sheets({ version: 'v4', auth })
   const sheetName = quoteSheetName(config.googleSheetTab)
   const readRange = `${sheetName}!A2:H`
+  let sheetIdPromise: Promise<number> | null = null
+
+  const getSheetId = async () => {
+    if (!sheetIdPromise) {
+      sheetIdPromise = sheets.spreadsheets
+        .get({
+          spreadsheetId: config.googleSheetId,
+          fields: 'sheets(properties(sheetId,title))',
+        })
+        .then(response => {
+          const sheet = response.data.sheets?.find(
+            item => item.properties?.title === config.googleSheetTab,
+          )
+
+          const sheetId = sheet?.properties?.sheetId
+          if (typeof sheetId !== 'number') {
+            throw new Error(`No se encontró la pestaña "${config.googleSheetTab}" para borrar filas`)
+          }
+
+          return sheetId
+        })
+    }
+
+    return sheetIdPromise
+  }
 
   return {
     async listCalendarRows() {
@@ -107,6 +132,30 @@ export function createSheetsClient(config: CalendarSyncConfig) {
         valueInputOption: 'USER_ENTERED',
         requestBody: {
           values: [values],
+        },
+      })
+
+      return response.data
+    },
+
+    async deleteCalendarRow(rowNumber: number) {
+      const sheetId = await getSheetId()
+
+      const response = await sheets.spreadsheets.batchUpdate({
+        spreadsheetId: config.googleSheetId,
+        requestBody: {
+          requests: [
+            {
+              deleteDimension: {
+                range: {
+                  sheetId,
+                  dimension: 'ROWS',
+                  startIndex: rowNumber - 1,
+                  endIndex: rowNumber,
+                },
+              },
+            },
+          ],
         },
       })
 
